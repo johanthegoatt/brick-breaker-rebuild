@@ -70,3 +70,36 @@ test("advanceLevel increments level and resets clear flag", () => {
   assert.ok(next.bricks.length > 0);
   assert.equal(next.ballLocked, true);
 });
+
+test("a 2-hit brick loses one hit per contact, not both", () => {
+  let state = createInitialState();
+  state.ballLocked = false;
+  const brick = { id: "t", x: 400, y: 200, width: 82, height: 24, hits: 2, maxHits: 2, points: 100 };
+  state.bricks = [brick, { id: "far", x: 10, y: 10, width: 10, height: 10, hits: 1, maxHits: 1, points: 1 }];
+  // Ball rising into the brick's underside.
+  state.ball = { ...state.ball, x: 440, y: 232, vx: 0, vy: -360 };
+  for (let i = 0; i < 10; i += 1) {
+    state = stepGame(state, { dt: 1 / 60 });
+  }
+  const hit = state.bricks.find((b) => b.id === "t");
+  assert.ok(hit, "brick should survive one contact");
+  assert.equal(hit.hits, 1);
+  assert.ok(state.ball.vy > 0, "ball heads back down");
+});
+
+test("a fast ball on a long frame still bounces off the paddle", () => {
+  let state = createInitialState();
+  state.ballLocked = false;
+  const paddle = state.paddle;
+  state.ball = {
+    ...state.ball,
+    x: paddle.x + paddle.width / 2,
+    y: paddle.y - 30,
+    vx: 0,
+    vy: 640,
+  };
+  // 0.1 s at 640 px/s is 64 px: more than the paddle plus the ball in one jump.
+  state = stepGame(state, { dt: 0.1 });
+  assert.equal(state.lives, 3);
+  assert.ok(state.ball.vy < 0);
+});

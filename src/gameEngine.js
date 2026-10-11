@@ -1,3 +1,6 @@
+// Longest slice of time the ball moves in one go (seconds).
+export const MAX_SUBSTEP_SECONDS = 1 / 240;
+
 function clamp(value, min, max) {
   return Math.min(max, Math.max(min, value));
 }
@@ -84,6 +87,10 @@ function circleHitsBrick(ball, brick) {
   return dx * dx + dy * dy <= ball.radius * ball.radius;
 }
 
+// Bounce off the side with the smallest overlap, push the ball back out of
+// the brick and point the velocity away from it. Without the push-out a ball
+// still overlapping a 2-hit brick on the next frame flipped again and spent
+// both hits in one contact.
 function resolveBrickCollision(ball, brick) {
   const overlapLeft = ball.x + ball.radius - brick.x;
   const overlapRight = brick.x + brick.width - (ball.x - ball.radius);
@@ -92,10 +99,18 @@ function resolveBrickCollision(ball, brick) {
 
   const smallest = Math.min(overlapLeft, overlapRight, overlapTop, overlapBottom);
 
-  if (smallest === overlapLeft || smallest === overlapRight) {
-    ball.vx *= -1;
+  if (smallest === overlapLeft) {
+    ball.x = brick.x - ball.radius;
+    ball.vx = -Math.abs(ball.vx);
+  } else if (smallest === overlapRight) {
+    ball.x = brick.x + brick.width + ball.radius;
+    ball.vx = Math.abs(ball.vx);
+  } else if (smallest === overlapTop) {
+    ball.y = brick.y - ball.radius;
+    ball.vy = -Math.abs(ball.vy);
   } else {
-    ball.vy *= -1;
+    ball.y = brick.y + brick.height + ball.radius;
+    ball.vy = Math.abs(ball.vy);
   }
 }
 
@@ -150,71 +165,80 @@ export function stepGame(
     return next;
   }
 
-  next.ball.x += next.ball.vx * dt;
-  next.ball.y += next.ball.vy * dt;
+  // Move the ball in fixed small slices so a slow frame (or a fast ball) can
+  // not carry it through the paddle or a brick in one jump.
+  const substeps = Math.max(1, Math.ceil(dt / MAX_SUBSTEP_SECONDS));
+  const h = dt / substeps;
+  for (let s = 0; s < substeps; s += 1) {
+    next.ball.x += next.ball.vx * h;
+    next.ball.y += next.ball.vy * h;
 
-  if (next.ball.x - next.ball.radius <= 0) {
-    next.ball.x = next.ball.radius;
-    next.ball.vx = Math.abs(next.ball.vx);
-  }
-
-  if (next.ball.x + next.ball.radius >= next.width) {
-    next.ball.x = next.width - next.ball.radius;
-    next.ball.vx = -Math.abs(next.ball.vx);
-  }
-
-  if (next.ball.y - next.ball.radius <= 0) {
-    next.ball.y = next.ball.radius;
-    next.ball.vy = Math.abs(next.ball.vy);
-  }
-
-  const paddleTop = next.paddle.y;
-  if (
-    next.ball.vy > 0 &&
-    next.ball.y + next.ball.radius >= paddleTop &&
-    next.ball.y - next.ball.radius <= paddleTop + next.paddle.height &&
-    next.ball.x >= next.paddle.x &&
-    next.ball.x <= next.paddle.x + next.paddle.width
-  ) {
-    const relative = (next.ball.x - (next.paddle.x + next.paddle.width / 2)) / (next.paddle.width / 2);
-    const clamped = clamp(relative, -1, 1);
-    const speed = Math.min(640, Math.hypot(next.ball.vx, next.ball.vy) * 1.02 + 5);
-    const angle = clamped * 1.1;
-
-    next.ball.vx = speed * Math.sin(angle);
-    next.ball.vy = -Math.abs(speed * Math.cos(angle));
-    next.combo = 1;
-  }
-
-  for (let i = 0; i < next.bricks.length; i += 1) {
-    const brick = next.bricks[i];
-    if (!circleHitsBrick(next.ball, brick)) {
-      continue;
+    if (next.ball.x - next.ball.radius <= 0) {
+      next.ball.x = next.ball.radius;
+      next.ball.vx = Math.abs(next.ball.vx);
     }
 
-    resolveBrickCollision(next.ball, brick);
-    brick.hits -= 1;
-
-    if (brick.hits <= 0) {
-      next.score += Math.round(brick.points * next.combo);
-      next.combo = Math.min(4, Number((next.combo + 0.25).toFixed(2)));
-      next.bricks.splice(i, 1);
+    if (next.ball.x + next.ball.radius >= next.width) {
+      next.ball.x = next.width - next.ball.radius;
+      next.ball.vx = -Math.abs(next.ball.vx);
     }
 
-    break;
-  }
+    if (next.ball.y - next.ball.radius <= 0) {
+      next.ball.y = next.ball.radius;
+      next.ball.vy = Math.abs(next.ball.vy);
+    }
 
-  if (next.ball.y - next.ball.radius > next.height) {
-    next.lives -= 1;
-    next.combo = 1;
+    const paddleTop = next.paddle.y;
+    if (
+      next.ball.vy > 0 &&
+      next.ball.y + next.ball.radius >= paddleTop &&
+      next.ball.y - next.ball.radius <= paddleTop + next.paddle.height &&
+      next.ball.x >= next.paddle.x &&
+      next.ball.x <= next.paddle.x + next.paddle.width
+    ) {
+      const relative = (next.ball.x - (next.paddle.x + next.paddle.width / 2)) / (next.paddle.width / 2);
+      const clamped = clamp(relative, -1, 1);
+      const speed = Math.min(640, Math.hypot(next.ball.vx, next.ball.vy) * 1.02 + 5);
+      const angle = clamped * 1.1;
 
-    if (next.lives <= 0) {
-      next.isGameOver = true;
+      next.ball.vx = speed * Math.sin(angle);
+      next.ball.vy = -Math.abs(speed * Math.cos(angle));
+      next.combo = 1;
+    }
+
+    for (let i = 0; i < next.bricks.length; i += 1) {
+      const brick = next.bricks[i];
+      if (!circleHitsBrick(next.ball, brick)) {
+        continue;
+      }
+
+      resolveBrickCollision(next.ball, brick);
+      brick.hits -= 1;
+
+      if (brick.hits <= 0) {
+        next.score += Math.round(brick.points * next.combo);
+        next.combo = Math.min(4, Number((next.combo + 0.25).toFixed(2)));
+        next.bricks.splice(i, 1);
+      }
+
+      break;
+    }
+
+    if (next.ball.y - next.ball.radius > next.height) {
+      next.lives -= 1;
+      next.combo = 1;
+
+      if (next.lives <= 0) {
+        next.isGameOver = true;
+        return next;
+      }
+
+      resetBallOnPaddle(next);
       return next;
     }
-
-    resetBallOnPaddle(next);
-    return next;
+    if (next.bricks.length === 0) {
+      break;
+    }
   }
 
   if (next.bricks.length === 0) {
