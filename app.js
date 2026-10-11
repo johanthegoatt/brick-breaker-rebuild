@@ -26,6 +26,7 @@ const appState = {
   keyState: { left: false, right: false },
   mouseX: null,
   launchRequested: false,
+  paused: false,
 };
 
 function setStatus(message) {
@@ -129,6 +130,11 @@ function animate(timestamp) {
   const dt = Math.min((timestamp - appState.lastFrameAt) / 1000, 0.033);
   appState.lastFrameAt = timestamp;
 
+  if (appState.paused) {
+    requestAnimationFrame(animate);
+    return;
+  }
+
   appState.game = stepGame(appState.game, {
     dt,
     moveDirection: computeMoveDirection(),
@@ -188,14 +194,19 @@ elements.overlayButton.addEventListener("click", () => {
 document.addEventListener("keydown", (event) => {
   const key = event.key.toLowerCase();
   if (key === "arrowleft" || key === "a") {
+    event.preventDefault();
     appState.keyState.left = true;
   }
 
   if (key === "arrowright" || key === "d") {
+    event.preventDefault();
     appState.keyState.right = true;
   }
 
   if (key === " " || key === "enter") {
+    if (event.target instanceof HTMLButtonElement) return;
+    event.preventDefault();
+    if (appState.paused) setPaused(false);
     requestLaunch();
   }
 });
@@ -211,14 +222,59 @@ document.addEventListener("keyup", (event) => {
   }
 });
 
-elements.canvas.addEventListener("mousemove", (event) => {
+function pointerToGameX(event) {
   const bounds = elements.canvas.getBoundingClientRect();
-  const x = ((event.clientX - bounds.left) / bounds.width) * GAME_WIDTH;
-  appState.mouseX = x;
+  return ((event.clientX - bounds.left) / bounds.width) * GAME_WIDTH;
+}
+
+// Pointer events cover mouse, pen and touch, so the paddle follows a finger
+// on a phone too. touch-action: none on the canvas keeps the page still.
+elements.canvas.addEventListener("pointermove", (event) => {
+  appState.mouseX = pointerToGameX(event);
 });
 
-elements.canvas.addEventListener("mouseleave", () => {
-  appState.mouseX = null;
+elements.canvas.addEventListener("pointerdown", (event) => {
+  appState.mouseX = pointerToGameX(event);
+  if (event.pointerType !== "mouse") {
+    elements.canvas.setPointerCapture(event.pointerId);
+  }
+  // Tap or click the board to launch.
+  if (appState.game.ballLocked) {
+    requestLaunch();
+  }
+});
+
+elements.canvas.addEventListener("pointerleave", (event) => {
+  if (event.pointerType === "mouse") {
+    appState.mouseX = null;
+  }
+});
+
+function setPaused(paused) {
+  if (appState.game.isGameOver || appState.game.isLevelCleared) return;
+  appState.paused = paused;
+  appState.lastFrameAt = 0;
+  appState.keyState.left = false;
+  appState.keyState.right = false;
+  setStatus(paused ? "Paused. Press P or come back to the tab to carry on." : "Back in play.");
+}
+
+document.addEventListener("keydown", (event) => {
+  if (event.key.toLowerCase() === "p") {
+    setPaused(!appState.paused);
+  }
+});
+
+// A hidden tab or a window that lost focus pauses the ball, so a
+// notification does not cost a life.
+document.addEventListener("visibilitychange", () => {
+  if (document.hidden) setPaused(true);
+});
+window.addEventListener("blur", () => {
+  if (!appState.game.ballLocked) setPaused(true);
+});
+window.addEventListener("focus", () => {
+  if (appState.paused && !document.hidden) setPaused(false);
 });
 
 draw();
