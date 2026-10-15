@@ -5,20 +5,68 @@ function clamp(value, min, max) {
   return Math.min(max, Math.max(min, value));
 }
 
+// One row per string, ten columns. Digits are hits to break, S is steel
+// (never breaks, never counts toward clearing), dots are empty.
+export const LAYOUTS = [
+  [
+    "1111111111",
+    "1111111111",
+    "1111111111",
+    "1111111111",
+    "1111111111",
+  ],
+  [
+    "....11....",
+    "...1111...",
+    "..111111..",
+    ".11111111.",
+    "1111111111",
+    "2222222222",
+  ],
+  [
+    "1.1.1.1.1.",
+    ".2.2.2.2.2",
+    "1.1.1.1.1.",
+    ".2.2.2.2.2",
+    "1.1.1.1.1.",
+    "S...SS...S",
+  ],
+  [
+    "....22....",
+    "...2112...",
+    "..211112..",
+    ".S211112S.",
+    "..211112..",
+    "...2112...",
+    "....22....",
+  ],
+  [
+    "SS333333SS",
+    "S21111112S",
+    "S21....12S",
+    "S21111112S",
+    "SS2....2SS",
+  ],
+];
+
 function createBricks(level, width) {
   const columns = 10;
-  const rows = 5 + Math.min(2, level - 1);
   const brickWidth = 82;
   const brickHeight = 24;
   const gap = 8;
   const totalWidth = columns * brickWidth + (columns - 1) * gap;
   const offsetX = (width - totalWidth) / 2;
   const offsetY = 74;
+  const layout = LAYOUTS[(level - 1) % LAYOUTS.length];
+  // Each time the layouts come round again every brick takes one more hit.
+  const loop = Math.floor((level - 1) / LAYOUTS.length);
 
   const bricks = [];
-  for (let row = 0; row < rows; row += 1) {
-    for (let col = 0; col < columns; col += 1) {
-      const hits = row >= rows - 2 && level > 1 ? 2 : 1;
+  layout.forEach((rowText, row) => {
+    [...rowText].forEach((cell, col) => {
+      if (cell === ".") return;
+      const steel = cell === "S";
+      const hits = steel ? 1 : Math.min(4, Number(cell) + loop);
       bricks.push({
         id: `${row}-${col}`,
         x: offsetX + col * (brickWidth + gap),
@@ -27,12 +75,17 @@ function createBricks(level, width) {
         height: brickHeight,
         hits,
         maxHits: hits,
-        points: 100 + row * 30,
+        steel,
+        points: (100 + row * 30) * hits,
       });
-    }
-  }
+    });
+  });
 
   return bricks;
+}
+
+export function breakableCount(bricks) {
+  return bricks.filter((brick) => !brick.steel).length;
 }
 
 function createBall(width, height, speed = 360) {
@@ -213,6 +266,9 @@ export function stepGame(
       }
 
       resolveBrickCollision(next.ball, brick);
+      if (brick.steel) {
+        break;
+      }
       brick.hits -= 1;
 
       if (brick.hits <= 0) {
@@ -236,12 +292,12 @@ export function stepGame(
       resetBallOnPaddle(next);
       return next;
     }
-    if (next.bricks.length === 0) {
+    if (breakableCount(next.bricks) === 0) {
       break;
     }
   }
 
-  if (next.bricks.length === 0) {
+  if (breakableCount(next.bricks) === 0) {
     next.isLevelCleared = true;
   }
 

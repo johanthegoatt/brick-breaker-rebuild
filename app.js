@@ -79,12 +79,18 @@ function drawBall(ball) {
   context.fill();
 }
 
+const BRICK_COLORS = ["#7dd1ff", "#ff8a5b", "#ff5d8f", "#c38bff"];
+
 function drawBricks(bricks) {
   for (const brick of bricks) {
-    context.fillStyle = brick.maxHits > 1 ? "#ff8a5b" : "#7dd1ff";
+    context.fillStyle = brick.steel ? "#8a97a8" : BRICK_COLORS[Math.min(brick.hits, BRICK_COLORS.length) - 1];
     context.fillRect(brick.x, brick.y, brick.width, brick.height);
 
-    if (brick.maxHits > 1) {
+    if (brick.steel) {
+      context.strokeStyle = "rgba(255, 255, 255, 0.45)";
+      context.lineWidth = 2;
+      context.strokeRect(brick.x + 2, brick.y + 2, brick.width - 4, brick.height - 4);
+    } else if (brick.maxHits > 1) {
       context.fillStyle = "rgba(0, 0, 0, 0.35)";
       context.font = "12px Outfit";
       context.textAlign = "center";

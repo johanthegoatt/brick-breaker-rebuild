@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { createInitialState, stepGame, advanceLevel } from "../src/gameEngine.js";
+import { createInitialState, stepGame, advanceLevel, LAYOUTS, breakableCount } from "../src/gameEngine.js";
 
 test("createInitialState provides expected baseline", () => {
   const state = createInitialState({ width: 900, height: 500 });
@@ -102,4 +102,46 @@ test("a fast ball on a long frame still bounces off the paddle", () => {
   state = stepGame(state, { dt: 0.1 });
   assert.equal(state.lives, 3);
   assert.ok(state.ball.vy < 0);
+});
+
+test("every layout row is ten columns of known cells", () => {
+  for (const layout of LAYOUTS) {
+    for (const row of layout) assert.match(row, /^[.1-4S]{10}$/);
+  }
+});
+
+test("steel bounces the ball and never breaks", () => {
+  let state = createInitialState();
+  state.ballLocked = false;
+  state.bricks = [
+    { id: "steel", x: 400, y: 200, width: 82, height: 24, hits: 1, maxHits: 1, steel: true, points: 0 },
+    { id: "other", x: 10, y: 10, width: 10, height: 10, hits: 1, maxHits: 1, points: 1 },
+  ];
+  state.ball = { ...state.ball, x: 440, y: 232, vx: 0, vy: -360 };
+  for (let i = 0; i < 10; i += 1) state = stepGame(state, { dt: 1 / 60 });
+  assert.ok(state.bricks.some((b) => b.id === "steel"));
+  assert.ok(state.ball.vy > 0);
+});
+
+test("a level with only steel left is cleared", () => {
+  const state = createInitialState({ width: 500, height: 400 });
+  state.bricks = [
+    { id: "steel", x: 0, y: 0, width: 50, height: 20, hits: 1, maxHits: 1, steel: true, points: 0 },
+    { id: "last", x: 220, y: 160, width: 60, height: 20, hits: 1, maxHits: 1, points: 100 },
+  ];
+  state.ballLocked = false;
+  state.ball = { ...state.ball, x: 250, y: 151, vx: 0, vy: 200 };
+  const next = stepGame(state, { dt: 0.05 });
+  assert.equal(breakableCount(next.bricks), 0);
+  assert.equal(next.isLevelCleared, true);
+});
+
+test("layouts loop with one more hit per brick", () => {
+  let state = createInitialState();
+  for (let level = 1; level <= LAYOUTS.length; level += 1) {
+    state.isLevelCleared = true;
+    state = advanceLevel(state);
+  }
+  assert.equal(state.level, LAYOUTS.length + 1);
+  assert.ok(state.bricks.every((brick) => brick.steel || brick.maxHits === 2));
 });
