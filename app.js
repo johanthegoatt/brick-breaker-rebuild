@@ -104,6 +104,63 @@ function drawBall(ball, slowed) {
 
 const BRICK_COLORS = ["#7dd1ff", "#ff8a5b", "#ff5d8f", "#c38bff"];
 
+const calmMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
+const fx = { sparks: [], trail: [], flash: 0 };
+
+function sparkBurst(x, y, color, count) {
+  for (let i = 0; i < count; i += 1) {
+    const angle = Math.random() * Math.PI * 2;
+    const speed = 80 + Math.random() * 220;
+    fx.sparks.push({ x, y, vx: Math.cos(angle) * speed, vy: Math.sin(angle) * speed - 60, life: 0.5 + Math.random() * 0.3, age: 0, color });
+  }
+  // Oldest sparks go first if a combo chain gets busy.
+  if (fx.sparks.length > 360) fx.sparks.splice(0, fx.sparks.length - 360);
+}
+
+function reactTo(events) {
+  for (const event of events) {
+    if (event.type === "break") sparkBurst(event.x, event.y, BRICK_COLORS[Math.min(event.maxHits, BRICK_COLORS.length) - 1], 16);
+    if (event.type === "hit") sparkBurst(event.x, event.y, "#ffffff", 5);
+    if (event.type === "steel") sparkBurst(event.x, event.y, "#c9d3df", 4);
+    if (event.type === "lost") fx.flash = 0.35;
+  }
+}
+
+function stepFx(dt) {
+  fx.flash = Math.max(0, fx.flash - dt);
+  for (const spark of fx.sparks) {
+    spark.age += dt;
+    spark.x += spark.vx * dt;
+    spark.y += spark.vy * dt;
+    spark.vy += 420 * dt;
+  }
+  fx.sparks = fx.sparks.filter((spark) => spark.age < spark.life);
+  if (!calmMotion.matches && !appState.game.ballLocked) {
+    for (const ball of appState.game.balls) fx.trail.push({ x: ball.x, y: ball.y, r: ball.radius, age: 0 });
+  }
+  for (const dot of fx.trail) dot.age += dt;
+  fx.trail = fx.trail.filter((dot) => dot.age < 0.12);
+}
+
+function drawFx() {
+  for (const dot of fx.trail) {
+    context.fillStyle = `rgba(255, 200, 87, ${0.35 * (1 - dot.age / 0.12)})`;
+    context.beginPath();
+    context.arc(dot.x, dot.y, dot.r * (1 - dot.age / 0.24), 0, Math.PI * 2);
+    context.fill();
+  }
+  for (const spark of fx.sparks) {
+    context.globalAlpha = 1 - spark.age / spark.life;
+    context.fillStyle = spark.color;
+    context.fillRect(spark.x - 2, spark.y - 2, 4, 4);
+  }
+  context.globalAlpha = 1;
+  if (fx.flash > 0) {
+    context.fillStyle = `rgba(255, 70, 90, ${fx.flash * 0.6})`;
+    context.fillRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
+  }
+}
+
 function drawBricks(bricks) {
   for (const brick of bricks) {
     context.fillStyle = brick.steel ? "#8a97a8" : BRICK_COLORS[Math.min(brick.hits, BRICK_COLORS.length) - 1];
@@ -143,6 +200,7 @@ function draw() {
   drawBackground();
   drawBricks(appState.game.bricks);
   drawPaddle(appState.game.paddle);
+  drawFx();
   drawCapsules(appState.game.capsules);
   for (const ball of appState.game.balls) drawBall(ball, appState.game.effects.slowMs > 0);
   drawHud(appState.game);
@@ -176,6 +234,8 @@ function animate(timestamp) {
   for (const event of appState.game.events) {
     if (event.type === "powerup") setStatus(`${POWERUPS[event.powerup].label}!`);
   }
+  reactTo(appState.game.events);
+  stepFx(dt);
   draw();
 
   requestAnimationFrame(animate);
