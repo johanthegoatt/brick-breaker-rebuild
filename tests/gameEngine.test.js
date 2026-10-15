@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { createInitialState, stepGame, advanceLevel, LAYOUTS, breakableCount } from "../src/gameEngine.js";
+import { createInitialState, stepGame, advanceLevel, LAYOUTS, breakableCount, DROP_CHANCE } from "../src/gameEngine.js";
 
 test("createInitialState provides expected baseline", () => {
   const state = createInitialState({ width: 900, height: 500 });
@@ -17,8 +17,8 @@ test("launch unlocks ball and gives it velocity", () => {
   const next = stepGame(state, { launch: true });
 
   assert.equal(next.ballLocked, false);
-  assert.notEqual(next.ball.vx, 0);
-  assert.ok(next.ball.vy < 0);
+  assert.notEqual(next.balls[0].vx, 0);
+  assert.ok(next.balls[0].vy < 0);
 });
 
 test("destroying a brick increases score and combo", () => {
@@ -36,12 +36,12 @@ test("destroying a brick increases score and combo", () => {
     },
   ];
   state.ballLocked = false;
-  state.ball.x = 250;
-  state.ball.y = 151;
-  state.ball.vx = 0;
-  state.ball.vy = 200;
+  state.balls[0].x = 250;
+  state.balls[0].y = 151;
+  state.balls[0].vx = 0;
+  state.balls[0].vy = 200;
 
-  const next = stepGame(state, { dt: 0.05 });
+  const next = stepGame(state, { dt: 0.05, random: () => 0.99 });
   assert.equal(next.bricks.length, 0);
   assert.ok(next.score >= 100);
   assert.ok(next.combo > 1);
@@ -51,8 +51,8 @@ test("destroying a brick increases score and combo", () => {
 test("missing the ball reduces life and locks ball", () => {
   const state = createInitialState({ width: 500, height: 350 });
   state.ballLocked = false;
-  state.ball.y = 360;
-  state.ball.vy = 200;
+  state.balls[0].y = 360;
+  state.balls[0].vy = 200;
 
   const next = stepGame(state, { dt: 0.016 });
   assert.equal(next.lives, 2);
@@ -77,31 +77,31 @@ test("a 2-hit brick loses one hit per contact, not both", () => {
   const brick = { id: "t", x: 400, y: 200, width: 82, height: 24, hits: 2, maxHits: 2, points: 100 };
   state.bricks = [brick, { id: "far", x: 10, y: 10, width: 10, height: 10, hits: 1, maxHits: 1, points: 1 }];
   // Ball rising into the brick's underside.
-  state.ball = { ...state.ball, x: 440, y: 232, vx: 0, vy: -360 };
+  state.balls = [{ ...state.balls[0], x: 440, y: 232, vx: 0, vy: -360 }];
   for (let i = 0; i < 10; i += 1) {
     state = stepGame(state, { dt: 1 / 60 });
   }
   const hit = state.bricks.find((b) => b.id === "t");
   assert.ok(hit, "brick should survive one contact");
   assert.equal(hit.hits, 1);
-  assert.ok(state.ball.vy > 0, "ball heads back down");
+  assert.ok(state.balls[0].vy > 0, "ball heads back down");
 });
 
 test("a fast ball on a long frame still bounces off the paddle", () => {
   let state = createInitialState();
   state.ballLocked = false;
   const paddle = state.paddle;
-  state.ball = {
-    ...state.ball,
+  state.balls = [{
+    ...state.balls[0],
     x: paddle.x + paddle.width / 2,
     y: paddle.y - 30,
     vx: 0,
     vy: 640,
-  };
+  }];
   // 0.1 s at 640 px/s is 64 px: more than the paddle plus the ball in one jump.
   state = stepGame(state, { dt: 0.1 });
   assert.equal(state.lives, 3);
-  assert.ok(state.ball.vy < 0);
+  assert.ok(state.balls[0].vy < 0);
 });
 
 test("every layout row is ten columns of known cells", () => {
@@ -117,10 +117,10 @@ test("steel bounces the ball and never breaks", () => {
     { id: "steel", x: 400, y: 200, width: 82, height: 24, hits: 1, maxHits: 1, steel: true, points: 0 },
     { id: "other", x: 10, y: 10, width: 10, height: 10, hits: 1, maxHits: 1, points: 1 },
   ];
-  state.ball = { ...state.ball, x: 440, y: 232, vx: 0, vy: -360 };
+  state.balls = [{ ...state.balls[0], x: 440, y: 232, vx: 0, vy: -360 }];
   for (let i = 0; i < 10; i += 1) state = stepGame(state, { dt: 1 / 60 });
   assert.ok(state.bricks.some((b) => b.id === "steel"));
-  assert.ok(state.ball.vy > 0);
+  assert.ok(state.balls[0].vy > 0);
 });
 
 test("a level with only steel left is cleared", () => {
@@ -130,8 +130,8 @@ test("a level with only steel left is cleared", () => {
     { id: "last", x: 220, y: 160, width: 60, height: 20, hits: 1, maxHits: 1, points: 100 },
   ];
   state.ballLocked = false;
-  state.ball = { ...state.ball, x: 250, y: 151, vx: 0, vy: 200 };
-  const next = stepGame(state, { dt: 0.05 });
+  state.balls = [{ ...state.balls[0], x: 250, y: 151, vx: 0, vy: 200 }];
+  const next = stepGame(state, { dt: 0.05, random: () => 0.99 });
   assert.equal(breakableCount(next.bricks), 0);
   assert.equal(next.isLevelCleared, true);
 });
@@ -144,4 +144,68 @@ test("layouts loop with one more hit per brick", () => {
   }
   assert.equal(state.level, LAYOUTS.length + 1);
   assert.ok(state.bricks.every((brick) => brick.steel || brick.maxHits === 2));
+});
+
+function liveState() {
+  const state = createInitialState();
+  state.ballLocked = false;
+  state.balls = [{ ...state.balls[0], x: 100, y: 300, vx: 0, vy: -200 }];
+  state.bricks = [{ id: "keep", x: 800, y: 10, width: 20, height: 10, hits: 1, maxHits: 1, points: 1 }];
+  return state;
+}
+
+test("a broken brick can drop a capsule", () => {
+  const state = createInitialState({ width: 500, height: 400 });
+  state.bricks = [
+    { id: "a", x: 220, y: 160, width: 60, height: 20, hits: 1, maxHits: 1, points: 100 },
+    { id: "b", x: 0, y: 0, width: 10, height: 10, hits: 1, maxHits: 1, points: 1 },
+  ];
+  state.ballLocked = false;
+  state.balls = [{ ...state.balls[0], x: 250, y: 151, vx: 0, vy: 200 }];
+  const next = stepGame(state, { dt: 0.05, random: () => DROP_CHANCE / 2 });
+  assert.equal(next.capsules.length, 1);
+});
+
+test("catching a wide capsule widens the paddle around its centre", () => {
+  const state = liveState();
+  const centre = state.paddle.x + state.paddle.width / 2;
+  state.capsules = [{ type: "wide", x: centre, y: state.paddle.y, width: 34, height: 16, vy: 150 }];
+  const next = stepGame(state, { dt: 1 / 60 });
+  assert.equal(next.capsules.length, 0);
+  assert.ok(next.paddle.width > state.paddle.width);
+  assert.ok(Math.abs(next.paddle.x + next.paddle.width / 2 - centre) < 1e-6);
+});
+
+test("multi-ball splits every ball into three", () => {
+  const state = liveState();
+  state.capsules = [{ type: "multi", x: state.paddle.x + 10, y: state.paddle.y, width: 34, height: 16, vy: 150 }];
+  const next = stepGame(state, { dt: 1 / 60 });
+  assert.equal(next.balls.length, 3);
+});
+
+test("losing one of several balls costs no life", () => {
+  const state = liveState();
+  state.balls.push({ ...state.balls[0], y: state.height + 50, vy: 200 });
+  const next = stepGame(state, { dt: 1 / 60 });
+  assert.equal(next.lives, 3);
+  assert.equal(next.balls.length, 1);
+});
+
+test("a missed capsule falls off the board", () => {
+  const state = liveState();
+  state.capsules = [{ type: "life", x: 900, y: state.height - 2, width: 34, height: 16, vy: 150 }];
+  const next = stepGame(state, { dt: 0.2 });
+  assert.equal(next.capsules.length, 0);
+  assert.equal(next.lives, 3);
+});
+
+test("power-ups end when a life is lost", () => {
+  const state = liveState();
+  state.effects.wideMs = 5000;
+  state.paddle.width = 180;
+  state.balls[0] = { ...state.balls[0], y: state.height + 50, vy: 200 };
+  const next = stepGame(state, { dt: 1 / 60 });
+  assert.equal(next.lives, 2);
+  assert.equal(next.effects.wideMs, 0);
+  assert.equal(next.paddle.width, 120);
 });

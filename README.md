@@ -8,7 +8,8 @@ Brick Breaker Rebuild is a modernized browser remake of the arcade classic with 
 - Keyboard, mouse and touch paddle control (pointer events); tap the board to launch
 - Pauses itself when the tab is hidden or the window loses focus, P to pause by hand
 - Combo multiplier scoring loop
-- Multi-hit bricks on higher levels
+- Five hand-made layouts (wall, pyramid, checkerboard, diamond, fortress) with up to 3-hit bricks and unbreakable steel, looping with one more hit per brick
+- Power-up capsules from broken bricks: wide paddle, multi-ball, slow ball, extra life
 - Life system, game over flow, and level clear state
 - Hardened restart flow + overlay visibility contract to prevent sticky end states
 - Next-level progression with increasing ball speed
@@ -21,7 +22,7 @@ Brick Breaker Rebuild is a modernized browser remake of the arcade classic with 
 cd brick-breaker-rebuild
 npm run dev
 ```
-Open `http://127.0.0.1:8103/brick-breaker-rebuild/index.html`.
+Open the URL `npm run dev` prints.
 
 ## Test
 ```bash

@@ -1,4 +1,4 @@
-import { createInitialState, stepGame, advanceLevel } from "./src/gameEngine.js";
+import { createInitialState, stepGame, advanceLevel, POWERUPS } from "./src/gameEngine.js";
 
 const GAME_WIDTH = 960;
 const GAME_HEIGHT = 600;
@@ -72,8 +72,31 @@ function drawPaddle(paddle) {
   context.fillRect(paddle.x, paddle.y, paddle.width, paddle.height);
 }
 
-function drawBall(ball) {
-  context.fillStyle = "#ffc857";
+const CAPSULE_STYLE = {
+  wide: { color: "#19c38f", letter: "W" },
+  multi: { color: "#ffc857", letter: "M" },
+  slow: { color: "#7dd1ff", letter: "S" },
+  life: { color: "#ff5d8f", letter: "+" },
+};
+
+function drawCapsules(capsules) {
+  context.font = "bold 12px Outfit, sans-serif";
+  context.textAlign = "center";
+  for (const capsule of capsules) {
+    const style = CAPSULE_STYLE[capsule.type];
+    const left = capsule.x - capsule.width / 2;
+    const top = capsule.y - capsule.height / 2;
+    context.fillStyle = style.color;
+    context.beginPath();
+    context.roundRect(left, top, capsule.width, capsule.height, capsule.height / 2);
+    context.fill();
+    context.fillStyle = "#0b1a29";
+    context.fillText(style.letter, capsule.x, capsule.y + 4);
+  }
+}
+
+function drawBall(ball, slowed) {
+  context.fillStyle = slowed ? "#9fe3ff" : "#ffc857";
   context.beginPath();
   context.arc(ball.x, ball.y, ball.radius, 0, Math.PI * 2);
   context.fill();
@@ -120,7 +143,8 @@ function draw() {
   drawBackground();
   drawBricks(appState.game.bricks);
   drawPaddle(appState.game.paddle);
-  drawBall(appState.game.ball);
+  drawCapsules(appState.game.capsules);
+  for (const ball of appState.game.balls) drawBall(ball, appState.game.effects.slowMs > 0);
   drawHud(appState.game);
 }
 
@@ -149,6 +173,9 @@ function animate(timestamp) {
   });
 
   appState.launchRequested = false;
+  for (const event of appState.game.events) {
+    if (event.type === "powerup") setStatus(`${POWERUPS[event.powerup].label}!`);
+  }
   draw();
 
   requestAnimationFrame(animate);
