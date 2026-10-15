@@ -22,6 +22,20 @@ const elements = {
 
 const context = elements.canvas.getContext("2d");
 
+// The game thinks in 960x600; the canvas backing store follows the screen.
+function fitCanvas() {
+  const ratio = Math.min(window.devicePixelRatio || 1, 2.5);
+  const scale = ((elements.canvas.clientWidth || GAME_WIDTH) * ratio) / GAME_WIDTH;
+  const width = Math.round(GAME_WIDTH * scale);
+  const height = Math.round(GAME_HEIGHT * scale);
+  if (elements.canvas.width !== width || elements.canvas.height !== height) {
+    elements.canvas.width = width;
+    elements.canvas.height = height;
+  }
+  context.setTransform(scale, 0, 0, scale, 0, 0);
+  draw();
+}
+
 const appState = {
   game: createInitialState({ width: GAME_WIDTH, height: GAME_HEIGHT }),
   lastFrameAt: 0,
@@ -447,5 +461,6 @@ window.addEventListener("focus", () => {
   if (appState.paused && !document.hidden) setPaused(false);
 });
 
+new ResizeObserver(fitCanvas).observe(elements.canvas);
 draw();
 requestAnimationFrame(animate);
