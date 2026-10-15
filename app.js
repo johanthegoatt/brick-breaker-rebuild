@@ -16,6 +16,8 @@ const elements = {
   overlay: document.getElementById("overlay"),
   overlayTitle: document.getElementById("overlayTitle"),
   overlayButton: document.getElementById("overlayButton"),
+  muteBtn: document.getElementById("muteBtn"),
+  bestValue: document.getElementById("bestValue"),
 };
 
 const context = elements.canvas.getContext("2d");
@@ -27,6 +29,8 @@ const appState = {
   mouseX: null,
   launchRequested: false,
   paused: false,
+  // null while the run is going; true or false once its score is recorded.
+  newBest: null,
 };
 
 function setStatus(message) {
@@ -42,7 +46,7 @@ function setOverlayMode(mode) {
   }
 
   if (mode === "game-over") {
-    elements.overlayTitle.textContent = "Game Over";
+    elements.overlayTitle.textContent = appState.newBest ? `New best: ${appState.game.score}` : "Game Over";
     elements.overlayButton.textContent = "Restart Run";
     elements.overlay.hidden = false;
     return;
@@ -117,8 +121,73 @@ function sparkBurst(x, y, color, count) {
   if (fx.sparks.length > 360) fx.sparks.splice(0, fx.sparks.length - 360);
 }
 
+// Pitch climbs with the combo, so a long chain sounds like one.
+const audio = { ctx: null, muted: readSetting("bbr-muted") === "1" };
+
+function readSetting(key) {
+  try {
+    return localStorage.getItem(key);
+  } catch {
+    return null;
+  }
+}
+
+function writeSetting(key, value) {
+  try {
+    localStorage.setItem(key, value);
+  } catch {}
+}
+
+function tone(freq, duration, type = "square", volume = 0.05) {
+  if (audio.muted) return;
+  if (!audio.ctx) {
+    const Ctor = window.AudioContext || window.webkitAudioContext;
+    if (!Ctor) return;
+    audio.ctx = new Ctor();
+  }
+  const ctx = audio.ctx;
+  if (ctx.state === "suspended") ctx.resume();
+  const osc = ctx.createOscillator();
+  const gain = ctx.createGain();
+  osc.type = type;
+  osc.frequency.value = freq;
+  gain.gain.setValueAtTime(volume, ctx.currentTime);
+  gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + duration);
+  osc.connect(gain).connect(ctx.destination);
+  osc.start();
+  osc.stop(ctx.currentTime + duration + 0.02);
+}
+
+function playEvent(event) {
+  const combo = appState.game.combo;
+  if (event.type === "paddle") tone(220, 0.08, "triangle", 0.07);
+  if (event.type === "wall") tone(330, 0.03, "square", 0.02);
+  if (event.type === "hit" || event.type === "steel") tone(event.type === "steel" ? 160 : 440, 0.06, "square", 0.04);
+  if (event.type === "break") tone(440 * 2 ** ((combo - 1) / 1.5), 0.1, "square", 0.05);
+  if (event.type === "powerup") { tone(660, 0.08, "sine", 0.07); setTimeout(() => tone(990, 0.12, "sine", 0.07), 70); }
+  if (event.type === "lost") tone(110, 0.4, "sawtooth", 0.08);
+  if (event.type === "cleared") [523, 659, 784].forEach((f, i) => setTimeout(() => tone(f, 0.14, "triangle", 0.07), i * 90));
+}
+
+function setMuted(muted) {
+  audio.muted = muted;
+  writeSetting("bbr-muted", muted ? "1" : "0");
+  elements.muteBtn.textContent = muted ? "Sound Off" : "Sound On";
+  elements.muteBtn.setAttribute("aria-pressed", String(!muted));
+}
+
+let best = Number(readSetting("bbr-best")) || 0;
+
+function recordScore(score) {
+  if (score <= best) return false;
+  best = score;
+  writeSetting("bbr-best", String(best));
+  return true;
+}
+
 function reactTo(events) {
   for (const event of events) {
+    playEvent(event);
     if (event.type === "break") sparkBurst(event.x, event.y, BRICK_COLORS[Math.min(event.maxHits, BRICK_COLORS.length) - 1], 16);
     if (event.type === "hit") sparkBurst(event.x, event.y, "#ffffff", 5);
     if (event.type === "steel") sparkBurst(event.x, event.y, "#c9d3df", 4);
@@ -184,6 +253,7 @@ function drawHud(game) {
   elements.livesValue.textContent = String(game.lives);
   elements.comboValue.textContent = `x${game.combo.toFixed(2)}`;
   elements.levelValue.textContent = String(game.level);
+  elements.bestValue.textContent = String(Math.max(best, game.score));
 
   elements.nextLevelBtn.disabled = !game.isLevelCleared;
 
@@ -235,6 +305,7 @@ function animate(timestamp) {
     if (event.type === "powerup") setStatus(`${POWERUPS[event.powerup].label}!`);
   }
   reactTo(appState.game.events);
+  if (appState.game.isGameOver && appState.newBest === null) appState.newBest = recordScore(appState.game.score);
   stepFx(dt);
   draw();
 
@@ -252,6 +323,7 @@ function requestLaunch() {
 
 function resetRun() {
   appState.game = createInitialState({ width: GAME_WIDTH, height: GAME_HEIGHT });
+  appState.newBest = null;
   resetRuntimeState();
   setStatus("New run started. Break every brick to clear the level.");
   draw();
@@ -270,6 +342,8 @@ function goToNextLevel() {
 }
 
 elements.launchBtn.addEventListener("click", requestLaunch);
+elements.muteBtn.addEventListener("click", () => setMuted(!audio.muted));
+setMuted(audio.muted);
 elements.resetBtn.addEventListener("click", resetRun);
 elements.nextLevelBtn.addEventListener("click", goToNextLevel);
 
@@ -355,6 +429,9 @@ function setPaused(paused) {
 document.addEventListener("keydown", (event) => {
   if (event.key.toLowerCase() === "p") {
     setPaused(!appState.paused);
+  }
+  if (event.key.toLowerCase() === "m") {
+    setMuted(!audio.muted);
   }
 });
 

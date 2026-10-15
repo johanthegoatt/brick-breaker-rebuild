@@ -7,7 +7,8 @@ Brick Breaker Rebuild is a modernized browser remake of the arcade classic with 
 - Canvas-rendered brick breaker gameplay
 - Keyboard, mouse and touch paddle control (pointer events); tap the board to launch
 - Pauses itself when the tab is hidden or the window loses focus, P to pause by hand
-- Combo multiplier scoring loop
+- Combo multiplier scoring loop, with a rising pitch per brick in the chain
+- Synthesized sound effects (M to mute) and a best score kept in the browser
 - Five hand-made layouts (wall, pyramid, checkerboard, diamond, fortress) with up to 3-hit bricks and unbreakable steel, looping with one more hit per brick
 - Power-up capsules from broken bricks: wide paddle, multi-ball, slow ball, extra life
 - Life system, game over flow, and level clear state
